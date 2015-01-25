@@ -2,18 +2,6 @@ import alsaaudio, wave, numpy, time, os
 import subprocess
 import sys
 
-inp = alsaaudio.PCM(alsaaudio.PCM_CAPTURE)
-inp.setchannels(1)
-inp.setrate(44100)
-inp.setformat(alsaaudio.PCM_FORMAT_S16_LE)
-inp.setperiodsize(1024)
-
-soglia = 500
-
-buffer_completo = False
-conto_silenzio = 0
-registrazione_iniziata = False
-
 def salva_wav(data):
     w = wave.open('test.wav', 'w')
     w.setnchannels(1)
@@ -22,23 +10,43 @@ def salva_wav(data):
     w.writeframes(data)
     w.close()
 
-all = []
 
-while True:
+if __name__ == "__main__":
+
+  inp = alsaaudio.PCM(alsaaudio.PCM_CAPTURE)
+  inp.setchannels(1)
+  inp.setrate(44100)
+  inp.setformat(alsaaudio.PCM_FORMAT_S16_LE)
+  inp.setperiodsize(1024)
+
+  soglia = 500
+
+  buffer_completo = False
+  registrazione_iniziata = False
+  conto_silenzio = 0
+  conto_inizio = 0
+
+  all = []
+
+  subprocess.call(["sudo","python","RX.py"])
+
+  while True:
     # sto in ascolto
     l, data = inp.read()
     a = numpy.fromstring(data, dtype='int16')
     volume = numpy.abs(a).mean()
-    #print volume, soglia
 
     if volume > soglia:
-        print "Soglia superata"
-        registrazione_iniziata = True
-        conto_silenzio = 0
+        conto_inizio = conto_inizio +1
+        if conto_inizio > 5:
+            print "Soglia superata"
+            registrazione_iniziata = True
+            conto_silenzio = 0
+            conto_inizio = 0
     else:
         if registrazione_iniziata:
             conto_silenzio = conto_silenzio + 1
-            if conto_silenzio > 100:
+            if conto_silenzio > 30:
                 buffer_completo = True
                 registrazione_iniziata = False
                 conto_silenzio = 0
@@ -46,14 +54,22 @@ while True:
     if registrazione_iniziata:
         if not buffer_completo:
             all.append(data)
-            #sys.stdout.write('-')
-            print "attach"
+            print volume, soglia
+
     else:
         if buffer_completo:
             salva_wav(''.join(all))
             all = []
+
+            subprocess.call(["sudo","python","TX.py"])
+            subprocess.call(["aplay","test.wav","beep.wav"])
+            subprocess.call(["sudo","python","RX.py"])
+
             buffer_completo = False
-            subprocess.call(["aplay","test.wav"])
+            registrazione_iniziata = False
+            conto_silenzio = 0
+            conto_inizio = 0
+
             print "riproduzione terminata"
 
 
