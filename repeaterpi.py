@@ -1,9 +1,9 @@
-import alsaaudio, wave, numpy, time, os
+import alsaaudio, wave, numpy, time, os, audioop
 import subprocess
 import sys
 
 def salva_wav(data):
-    w = wave.open('test.wav', 'w')
+    w = wave.open('temp.wav', 'w')
     w.setnchannels(1)
     w.setsampwidth(2)
     w.setframerate(44100)
@@ -19,7 +19,7 @@ if __name__ == "__main__":
   inp.setformat(alsaaudio.PCM_FORMAT_S16_LE)
   inp.setperiodsize(1024)
 
-  soglia = 500
+  soglia = 3500
 
   buffer_completo = False
   registrazione_iniziata = False
@@ -34,12 +34,13 @@ if __name__ == "__main__":
     # sto in ascolto
     l, data = inp.read()
     a = numpy.fromstring(data, dtype='int16')
-    volume = numpy.abs(a).mean()
+    volume = audioop.max(data, 2)
+    #volume = numpy.abs(a).mean()
 
     if volume > soglia:
         conto_inizio = conto_inizio +1
         if conto_inizio > 5:
-            print "Soglia superata"
+            print ">>> Soglia superata"
             registrazione_iniziata = True
             conto_silenzio = 0
             conto_inizio = 0
@@ -50,11 +51,12 @@ if __name__ == "__main__":
                 buffer_completo = True
                 registrazione_iniziata = False
                 conto_silenzio = 0
+                conto_inizio = 0
 
     if registrazione_iniziata:
         if not buffer_completo:
             all.append(data)
-            print volume, soglia
+            print volume, soglia, conto_inizio
 
     else:
         if buffer_completo:
@@ -62,7 +64,7 @@ if __name__ == "__main__":
             all = []
 
             subprocess.call(["sudo","python","TX.py"])
-            subprocess.call(["aplay","test.wav","beep.wav"])
+            subprocess.call(["aplay","temp.wav","beep.wav"])
             subprocess.call(["sudo","python","RX.py"])
 
             buffer_completo = False
