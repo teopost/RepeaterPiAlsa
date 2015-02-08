@@ -1,4 +1,6 @@
-import alsaaudio, wave, numpy, time, os, audioop
+# sudo apt-get install python-pygame python-alsaaudio
+
+import alsaaudio, wave, numpy, time, os, audioop, math
 import subprocess
 import sys
 
@@ -10,8 +12,12 @@ def salva_wav(data):
     w.writeframes(data)
     w.close()
 
+def play(audiofile):
+    print "play ", audiofile
+    subprocess.call(["aplay", audiofile ])
 
 if __name__ == "__main__":
+  print "Attendere. Initializzazione in corso..."
 
   inp = alsaaudio.PCM(alsaaudio.PCM_CAPTURE)
   inp.setchannels(1)
@@ -19,58 +25,72 @@ if __name__ == "__main__":
   inp.setformat(alsaaudio.PCM_FORMAT_S16_LE)
   inp.setperiodsize(1024)
 
-  soglia = 3500
+  soglia = 80
 
   buffer_completo = False
   registrazione_iniziata = False
-  conto_silenzio = 0
-  conto_inizio = 0
+  cicli_sotto_soglia_durante_registrazione = 0
+  cicli_sopra_soglia = 0
 
   all = []
 
   subprocess.call(["sudo","python","RX.py"])
 
+  print "Pronto..."
+ 
   while True:
     # sto in ascolto
     l, data = inp.read()
     a = numpy.fromstring(data, dtype='int16')
-    volume = audioop.max(data, 2)
-    #volume = numpy.abs(a).mean()
+    #volume = audioop.max(data, 2)
+    volume = int(round(numpy.abs(a).mean(),-1))
 
     if volume > soglia:
-        conto_inizio = conto_inizio +1
-        if conto_inizio > 5:
-            print ">>> Soglia superata"
-            registrazione_iniziata = True
-            conto_silenzio = 0
-            conto_inizio = 0
+        if not registrazione_iniziata:
+            cicli_sopra_soglia = cicli_sopra_soglia + 1
+            print cicli_sopra_soglia   
+            if cicli_sopra_soglia > 5:
+                print "soglia superata"
+                registrazione_iniziata = True
+                cicli_sotto_soglia_durante_registrazione = 0
+                cicli_sopra_soglia = 0
     else:
+        cicli_sopra_soglia = 0 
         if registrazione_iniziata:
-            conto_silenzio = conto_silenzio + 1
-            if conto_silenzio > 30:
+            cicli_sotto_soglia_durante_registrazione = cicli_sotto_soglia_durante_registrazione + 1
+            if cicli_sotto_soglia_durante_registrazione > 30:
                 buffer_completo = True
                 registrazione_iniziata = False
-                conto_silenzio = 0
-                conto_inizio = 0
+                cicli_sotto_soglia_durante_registrazione = 0
 
     if registrazione_iniziata:
         if not buffer_completo:
             all.append(data)
-            print volume, soglia, conto_inizio
+            if volume > soglia:
+                print "RECORDING (%s)...: Volume: %s - %d - %d" % (soglia, volume, cicli_sopra_soglia, cicli_sotto_soglia_durante_registrazione)
+            else:
+                print "recording (%s)...: Volume: %s - %d - %d" % (soglia, volume, cicli_sopra_soglia, cicli_sotto_soglia_durante_registrazione)
 
     else:
         if buffer_completo:
-            salva_wav(''.join(all))
+            audiodata=''.join(all)
+
+            salva_wav(audiodata)
+           
             all = []
 
             subprocess.call(["sudo","python","TX.py"])
-            subprocess.call(["aplay","temp.wav","beep.wav"])
+            #inp.write(audiodata)
+
+            play("temp.wav")
+            play("beep.wav")
+
             subprocess.call(["sudo","python","RX.py"])
 
             buffer_completo = False
             registrazione_iniziata = False
-            conto_silenzio = 0
-            conto_inizio = 0
+            cicli_sotto_soglia_durante_registrazione = 0
+            cicli_sopra_soglia = 0
 
             print "riproduzione terminata"
 
